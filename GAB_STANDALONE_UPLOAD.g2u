@@ -1,0 +1,83 @@
+Program.Sub.Preflight.Start
+
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+v.Local.sFilePath.Declare(String)
+v.Local.sExcel.Declare(String)
+v.Local.sLine.Declare(String)
+v.Local.sRecords.Declare(String)
+v.Local.sSaveFile.Declare(String)
+v.Local.iCount.Declare(Long)
+v.Local.sPart.Declare(String)
+v.Local.sRev.Declare(String)
+v.Local.fQty.Declare(Float)
+
+
+
+'We need to ask for the Excel file
+f.Intrinsic.UI.ShowOpenFileDialog("","*.*","",v.Local.sFilePath)
+f.Intrinsic.Control.If(v.Local.sFilePath,<>,"***CANCEL***")
+	'We need to read the Excel in to a delimited String
+	f.Automation.MSExcel.ReadSpreadsheet(v.Local.sFilePath,v.Local.sExcel)
+	f.Intrinsic.String.Replace(v.Local.sExcel,"&^&","$!$",v.Local.sExcel)
+	f.Data.DataTable.CreateFromString("Excel",v.Local.sExcel,"PART_NO*!*LOC*!*QTY*!*REF*!*LOT*!*BIN*!*HEAT*!*SERIAL","String*!*String*!*String*!*String*!*String*!*String*!*String*!*String","*!*","$!$")
+	f.Intrinsic.Control.For(v.Local.iCount,1,v.DataTable.Excel.RowCount--,1)
+		v.Local.sLine.Set("")
+		f.Intrinsic.Control.If(v.DataTable.Excel(v.Local.iCount).QTY.FieldVal,<>,"")
+			f.Intrinsic.Control.If(v.DataTable.Excel(v.Local.iCount).QTY!FieldValFloat,>,0)
+				'We need to do a Receipt, putting into Inventory for the Part Location
+				' 0Part, 1Rev, 2Loc, 3Qty, 4Description, 5Lot,6Bin, 7Heat, 8Serial, I/R, Drop
+				v.Local.sPart.Set("")
+				f.Intrinsic.String.RPad(v.DataTable.Excel(v.Local.iCount).PART_NO!FieldVal," ",20,v.Local.sPart)
+				v.Local.sRev.Set(v.Local.sPart.Right3)
+				v.Local.sPart.Set(v.Local.sPart.Left17)
+				F.Intrinsic.String.Build("{0},{1},{2},{3},{4},{5},{6},{7},{8},R,N,,,",V.Local.sPart.Trim,v.Local.sRev.Trim,v.DataTable.Excel(v.Local.iCount).LOC!FieldValTrim,V.DataTable.Excel(v.Local.iCount).QTY!FieldValFloat,V.DataTable.Excel(v.Local.iCount).REF!FieldValTrim,V.DataTable.Excel(v.Local.iCount).LOT!FieldValTrim,V.DataTable.Excel(v.Local.iCount).BIN!FieldValTrim,V.DataTable.Excel(v.Local.iCount).HEAT!FieldValTrim,V.DataTable.Excel(v.Local.iCount).SERIAL!FieldValTrim,v.Local.sLine)
+			f.Intrinsic.Control.Else
+				'We need to do a Issue, taking qty out of Inventory for the Part Location
+				' Part, Rev, Loc, Qty, Description, Lot,Bin, Hea, Serial, I/R, Drop
+				v.Local.sPart.Set("")
+				f.Intrinsic.String.RPad(v.DataTable.Excel(v.Local.iCount).PART_NO!FieldVal," ",20,v.Local.sPart)
+				v.Local.sRev.Set(v.Local.sPart.Right3)
+				v.Local.sPart.Set(v.Local.sPart.Left17)
+				v.Local.fQty.Set(0)
+				f.Intrinsic.Math.Mult(v.DataTable.Excel(v.Local.iCount).QTY!FieldValFloat,-1,v.Local.fQty)
+				F.Intrinsic.String.Build("{0},{1},{2},{3},{4},{5},{6},{7},{8},I,N,,,",V.Local.sPart.Trim,v.Local.sRev.Trim,v.DataTable.Excel(v.Local.iCount).LOC!FieldValTrim,V.Local.fQty,V.DataTable.Excel(v.Local.iCount).REF!FieldValTrim,V.DataTable.Excel(v.Local.iCount).LOT!FieldValTrim,V.DataTable.Excel(v.Local.iCount).BIN!FieldValTrim,V.DataTable.Excel(v.Local.iCount).HEAT!FieldValTrim,V.DataTable.Excel(v.Local.iCount).SERIAL!FieldValTrim,v.Local.sLine)
+			f.Intrinsic.Control.EndIf
+			f.Intrinsic.Control.If(v.Local.sRecords,<>,"")
+				f.Intrinsic.String.Build("{0}{1}{2}",v.Local.sRecords,v.Ambient.NewLine,v.Local.sLine,v.Local.sRecords)
+			f.Intrinsic.Control.Else
+				v.Local.sRecords.Set(v.Local.sLine)
+			f.Intrinsic.Control.EndIf
+		f.Intrinsic.Control.EndIf
+	f.Intrinsic.Control.Next(v.Local.iCount)
+	'We are done looping through so we can save the file
+	F.Intrinsic.String.Build("{0}\{1}StandIss.txt",V.Caller.FilesDir,V.Caller.CompanyCode,V.Local.sSaveFile)
+	f.Intrinsic.File.String2File(v.Local.sSaveFile,v.Local.sRecords)
+	f.Intrinsic.String.Build("{0}StandIss.txt",v.Caller.CompanyCode,v.Local.sSaveFile)
+	f.Intrinsic.Debug.CallWrapperDebugEnable
+	f.Intrinsic.Task.LaunchGSSSync("WIR104","-C",v.Local.sSaveFile)
+
+f.Intrinsic.Control.EndIf
+
+f.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4481_Issue_Recpt_Spreadsheet.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Main.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$SS1$}$03/10/17 10:19:29 AM$}$False
+${$3$}$0$}$$}$0$}$-1$}$$}$12:00:00 AM$}$Read spreadsheet and create Recept if Qty > 0 and Issue if Qty < 0
+Program.Sub.Comments.End
